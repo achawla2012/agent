@@ -561,19 +561,64 @@ func diskPartitions() (partitions []*proto.DiskPartition) {
 }
 
 func releaseInfo() (release *proto.ReleaseInfo) {
-	hostInfo, err := host.Info()
+	osRelease, err := getOsRelease()
 	if err != nil {
-		log.Errorf("Could not read release information for host: %v", err)
-		return &proto.ReleaseInfo{}
+		hostInfo, err := host.Info()
+		if err != nil {
+			log.Errorf("Could not read release information for host: %v", err)
+			return &proto.ReleaseInfo{}
+		}
+
+		return &proto.ReleaseInfo{
+			VersionId: hostInfo.PlatformVersion,
+			Version:   hostInfo.KernelVersion,
+			Codename:  hostInfo.OS,
+			Name:      hostInfo.PlatformFamily,
+			Id:        hostInfo.Platform,
+		}
+	}
+	return osRelease
+}
+
+func getOsRelease() (*proto.ReleaseInfo, error) {
+	osReleaseFilePath  :=  "/etc/os-release"
+	_ , osReleaseError := os.Stat(osReleaseFilePath)
+
+	if os.IsNotExist(osReleaseError) {
+		text := "Could not find path for os-release file on the host"
+		log.Errorf(text)
+		return &proto.ReleaseInfo{}, errors.New(text)
+	}
+
+	osReleaseInfoMap := map[string]string{}
+
+	data, err := ioutil.ReadFile(osReleaseFilePath)
+	if err != nil {
+		text := "Could not read os-release file on the host"
+		log.Errorf(text)
+		return &proto.ReleaseInfo{}, err
+	}
+	scanner := bufio.NewScanner(strings.NewReader(string(data)))
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		field := strings.Split(line, "=")
+		if len(field) < 2 {
+			continue
+		}
+		osReleaseInfoMap[field[0]] = strings.Trim(field[1], "\"")
+	}
+
+    if _, ok := osReleaseInfoMap["NAME"]; !ok {
+		osReleaseInfoMap["NAME"] = "unix"
 	}
 
 	return &proto.ReleaseInfo{
-		VersionId: hostInfo.PlatformVersion,
-		Version:   hostInfo.KernelVersion,
-		Codename:  hostInfo.OS,
-		Name:      hostInfo.PlatformFamily,
-		Id:        hostInfo.Platform,
-	}
+		VersionId: osReleaseInfoMap["VERSION_ID"],
+		Version:   osReleaseInfoMap["VERSION"],
+		Codename:  osReleaseInfoMap["VERSION_CODENAME"],
+		Name:      osReleaseInfoMap["NAME"],
+		Id:        osReleaseInfoMap["ID"],
+	}, nil
 }
 
 func (env *EnvironmentType) networks() (res *proto.Network) {
