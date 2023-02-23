@@ -561,7 +561,8 @@ func diskPartitions() (partitions []*proto.DiskPartition) {
 }
 
 func releaseInfo() (release *proto.ReleaseInfo) {
-	osRelease, err := getOsRelease()
+	const osReleaseFile =  "/etc/os-release"
+	osRelease, err := getOsRelease(osReleaseFile)
 	if err != nil {
 		hostInfo, err := host.Info()
 		if err != nil {
@@ -580,22 +581,21 @@ func releaseInfo() (release *proto.ReleaseInfo) {
 	return osRelease
 }
 
-func getOsRelease() (*proto.ReleaseInfo, error) {
-	osReleaseFilePath  :=  "/etc/os-release"
-	_ , osReleaseError := os.Stat(osReleaseFilePath)
-
+// getOsRelease reads osReleaseFile and returns release information for host.
+// If os.Stat(osReleaseFilePath) does not find file, or
+// ioutil.ReadFile(osReleaseFilePath) fails to read file, an error occurs.
+func getOsRelease(osReleaseFile string) (release *proto.ReleaseInfo, err error) {
+	_ , osReleaseError := os.Stat(osReleaseFile)
 	if os.IsNotExist(osReleaseError) {
-		text := "Could not find path for os-release file on the host"
-		log.Errorf(text)
-		return &proto.ReleaseInfo{}, errors.New(text)
+		log.Errorf("Could not find path for os-release file on the host")
+		return &proto.ReleaseInfo{}, errors.New("unable to find " + osReleaseFile)
 	}
 
 	osReleaseInfoMap := map[string]string{}
 
-	data, err := ioutil.ReadFile(osReleaseFilePath)
+	data, err := ioutil.ReadFile(osReleaseFile)
 	if err != nil {
-		text := "Could not read os-release file on the host"
-		log.Errorf(text)
+		log.Errorf("Could not read os-release file on the host")
 		return &proto.ReleaseInfo{}, err
 	}
 	scanner := bufio.NewScanner(strings.NewReader(string(data)))
@@ -608,7 +608,7 @@ func getOsRelease() (*proto.ReleaseInfo, error) {
 		osReleaseInfoMap[field[0]] = strings.Trim(field[1], "\"")
 	}
 
-    if _, ok := osReleaseInfoMap["NAME"]; !ok {
+	if _, ok := osReleaseInfoMap["NAME"]; !ok {
 		osReleaseInfoMap["NAME"] = "unix"
 	}
 
