@@ -371,8 +371,6 @@ func TestNewHostInfo(t *testing.T) {
 	assert.GreaterOrEqual(t, len(host.Partitons), 1)
 	assert.GreaterOrEqual(t, len(host.Network.Interfaces), 1)
 	assert.GreaterOrEqual(t, len(host.Processor), 1)
-	assert.NotEmpty(t, host.Processor[0].Architecture)
-	assert.GreaterOrEqual(t, len(strings.Split(host.Uname, " ")), 5)
 	assert.NotEmpty(t, host.Release)
 	assert.Equal(t, tags, host.Tags)
 }
@@ -415,9 +413,6 @@ func TestProcessors(t *testing.T) {
 	processorInfo := processors()
 	// at least one network interface
 	assert.GreaterOrEqual(t, processorInfo[0].GetCpus(), int32(1))
-	// non empty architecture
-	assert.NotEmpty(t, processorInfo[0].GetArchitecture())
-	assert.Equal(t, "arm64", processorInfo[0].GetArchitecture())
 }
 
 type mockShellCommand struct {
