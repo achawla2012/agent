@@ -11,7 +11,6 @@ import (
 	"errors"
 	"io/ioutil"
 	"os"
-	"strings"
 	"testing"
 
 	"github.com/nginx/agent/sdk/v2"
