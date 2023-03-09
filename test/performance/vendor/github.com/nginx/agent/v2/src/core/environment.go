@@ -81,6 +81,8 @@ var (
 	_                  Environment = &EnvironmentType{}
 )
 
+var currentShellCommander = execShellCommander
+
 func (env *EnvironmentType) NewHostInfo(agentVersion string, tags *[]string, configDirs string, clearCache bool) *proto.HostInfo {
 	// temp cache measure
 	if env.host == nil || clearCache {
@@ -523,19 +525,35 @@ func processorCache(item cpu.InfoStat) map[string]string {
 	return cache
 }
 
-func getProcessorCacheInfo(cpuInfo cpuid.CPUInfo) map[string]string {
-	cache := getDefaultProcessorCacheInfo(cpuInfo)
-
-	out, err := exec.Command("lscpu").Output()
-	if err != nil {
-		log.Warnf("Error executing lscpu on host: %v", err)
-		return cache
-	}
-
-	return parselscpuInfo(string(out), cache)
+type IExecShellCommander interface {
+	Output() ([]byte, error)
 }
 
-func parselscpuInfo(lscpuInfo string, cache map[string]string) map[string]string {
+type execShellCommand struct {
+	*exec.Cmd
+}
+
+func execShellCommander(name string, arg ...string) IExecShellCommander {
+	execCmd := exec.Command(name, arg...)
+	return execShellCommand{Cmd: execCmd}
+}
+
+func getProcessorCacheInfo(cpuInfo cpuid.CPUInfo) map[string]string {
+	cache := getDefaultProcessorCacheInfo(cpuInfo)
+	return lscpuExecCmd(cache)
+}
+
+func lscpuExecCmd(cache map[string]string) map[string]string {
+	cmd := currentShellCommander("lscpu")
+	out, err := cmd.Output()
+	if err != nil {
+		log.Warnf("Install lscpu on host to get processor info: %v", err)
+		return cache
+	}
+	return parseLscpu(string(out), cache)
+}
+
+func parseLscpu(lscpuInfo string, cache map[string]string) map[string]string {
 	lscpuInfos := strings.TrimSpace(lscpuInfo)
 	lines := strings.Split(lscpuInfos, "\n")
 	lscpuInfoMap := map[string]string{}

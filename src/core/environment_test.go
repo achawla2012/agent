@@ -8,8 +8,10 @@
 package core
 
 import (
+	"errors"
 	"io/ioutil"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/nginx/agent/sdk/v2"
@@ -369,6 +371,8 @@ func TestNewHostInfo(t *testing.T) {
 	assert.GreaterOrEqual(t, len(host.Partitons), 1)
 	assert.GreaterOrEqual(t, len(host.Network.Interfaces), 1)
 	assert.GreaterOrEqual(t, len(host.Processor), 1)
+	assert.NotEmpty(t, host.Processor[0].Architecture)
+	assert.GreaterOrEqual(t, len(strings.Split(host.Uname, " ")), 5)
 	assert.NotEmpty(t, host.Release)
 	assert.Equal(t, tags, host.Tags)
 }
@@ -411,6 +415,97 @@ func TestProcessors(t *testing.T) {
 	processorInfo := processors()
 	// at least one network interface
 	assert.GreaterOrEqual(t, processorInfo[0].GetCpus(), int32(1))
+	// non empty architecture
+	assert.NotEmpty(t, processorInfo[0].GetArchitecture())
+	assert.Equal(t, "arm64", processorInfo[0].GetArchitecture())
+}
+
+type mockShellCommand struct {
+	OutputFunc func() ([]byte, error)
+}
+
+func (msc mockShellCommand) Output() ([]byte, error) {
+	return msc.OutputFunc()
+}
+
+type testExecShellCommander func(name string, arg ...string) IExecShellCommander
+
+func mockExecShellCommander(output string, err error) testExecShellCommander {
+	return func(name string, arg ...string) IExecShellCommander {
+		outputFunc := func() ([]byte, error) {
+			return []byte(output), err
+		}
+		return mockShellCommand{
+			OutputFunc: outputFunc,
+		}
+	}
+}
+
+func TestLscpuExecCmd(t *testing.T) {
+	tempShellCommander := currentShellCommander
+	defer func() { currentShellCommander = tempShellCommander }()
+	tests := []struct {
+		name                   string
+		mockExecShellCommander testExecShellCommander
+		defaultCacheInfo       map[string]string
+		expect                 map[string]string
+	}{
+		{
+			name:                   "lscpu command error",
+			mockExecShellCommander: mockExecShellCommander("", errors.New("Error executing lscpu")),
+			defaultCacheInfo: map[string]string{
+				"L1d": "64 KiB",
+				"L1i": "96 KiB",
+				"L2":  "2 MiB",
+				"L3":  "-1",
+			},
+			expect: map[string]string{
+				"L1d": "64 KiB",
+				"L1i": "96 KiB",
+				"L2":  "2 MiB",
+				"L3":  "-1",
+			},
+		},
+		{
+			name:                   "default cache info absent",
+			mockExecShellCommander: mockExecShellCommander(lscpuInfo2, nil),
+			defaultCacheInfo: map[string]string{
+				"L1d": "-1",
+				"L1i": "-1",
+				"L2":  "-1",
+				"L3":  "-1",
+			},
+			expect: map[string]string{
+				"L1d": "64 KiB",
+				"L1i": "96 KiB",
+				"L2":  "2 MiB",
+				"L3":  "-1",
+			},
+		},
+		{
+			name:                   "lscpu error with default cache info absent",
+			mockExecShellCommander: mockExecShellCommander("", errors.New("Error executing lscpu")),
+			defaultCacheInfo: map[string]string{
+				"L1d": "-1",
+				"L1i": "-1",
+				"L2":  "-1",
+				"L3":  "-1",
+			},
+			expect: map[string]string{
+				"L1d": "-1",
+				"L1i": "-1",
+				"L2":  "-1",
+				"L3":  "-1",
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			currentShellCommander = tt.mockExecShellCommander
+			actual := lscpuExecCmd(tt.defaultCacheInfo)
+			assert.Equal(t, tt.expect, actual)
+		})
+	}
 }
 
 func TestParseLscpu(t *testing.T) {
