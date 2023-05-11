@@ -104,8 +104,11 @@ func (r *MetricsSender) Process(msg *core.Message) {
 			return
 		}
 		r.metricSenderBackoff(cmd)
+	} else {
+		log.Debugf("Un-supported message: %v", msg)
 	}
 }
+
 func (r *MetricsSender) metricSenderBackoff(cmd *proto.Command_AgentConfig) {
 	log.Debugf("metricSenderBackoff in metrics_sender.go with command %v ", cmd)
 	agentConfig := cmd.AgentConfig
